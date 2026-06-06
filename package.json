@@ -1,0 +1,13 @@
+{
+  "name": "dividend-note-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Personal dividend calendar web app",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
