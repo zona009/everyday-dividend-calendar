@@ -122,6 +122,50 @@ async function readSupabaseData() {
   return { accounts, dividends };
 }
 
+async function createSupabaseAccount(account) {
+  const [created] = await supabaseFetch("accounts", { method: "POST", body: JSON.stringify(account) });
+  return created;
+}
+
+async function updateSupabaseAccount(id, account) {
+  const [updated] = await supabaseFetch(`accounts?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ label: account.label }),
+  });
+  return updated;
+}
+
+async function deleteSupabaseAccount(id) {
+  await supabaseFetch(`accounts?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+async function createSupabaseDividend(dividend) {
+  const [created] = await supabaseFetch("dividends", { method: "POST", body: JSON.stringify(dividend) });
+  return created;
+}
+
+async function updateSupabaseDividend(id, dividend) {
+  const [updated] = await supabaseFetch(`dividends?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      account: dividend.account,
+      stock: dividend.stock,
+      shares: dividend.shares,
+      date: dividend.date,
+      amount: dividend.amount,
+    }),
+  });
+  return updated;
+}
+
+async function deleteSupabaseDividend(id) {
+  await supabaseFetch(`dividends?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+async function bulkDeleteSupabaseDividends(ids) {
+  await supabaseFetch(`dividends?id=in.(${Array.from(ids).map(encodeURIComponent).join(",")})`, { method: "DELETE" });
+}
+
 async function writeSupabaseData(data) {
   await supabaseFetch("dividends?id=neq.__none__", { method: "DELETE" });
   await supabaseFetch("accounts?id=neq.__none__", { method: "DELETE" });
@@ -200,6 +244,7 @@ async function handleApi(req, res) {
 
   if (req.url === "/api/dividends" && req.method === "POST") {
     const dividend = cleanDividend(await readBody(req));
+    if (USE_SUPABASE) return sendJson(res, 201, await createSupabaseDividend(dividend));
     data.dividends.push(dividend);
     await writeData(data);
     return sendJson(res, 201, dividend);
@@ -207,6 +252,7 @@ async function handleApi(req, res) {
 
   if (req.url === "/api/accounts" && req.method === "POST") {
     const account = cleanAccount(await readBody(req));
+    if (USE_SUPABASE) return sendJson(res, 201, await createSupabaseAccount(account));
     data.accounts.push(account);
     await writeData(data);
     return sendJson(res, 201, account);
@@ -216,6 +262,10 @@ async function handleApi(req, res) {
     const body = await readBody(req);
     const ids = new Set(Array.isArray(body.ids) ? body.ids.map(String) : []);
     if (!ids.size) throw new Error("삭제할 배당 내역을 선택해 주세요.");
+    if (USE_SUPABASE) {
+      await bulkDeleteSupabaseDividends(ids);
+      return sendJson(res, 200, { ok: true, deleted: ids.size });
+    }
     const before = data.dividends.length;
     data.dividends = data.dividends.filter(item => !ids.has(item.id));
     await writeData(data);
@@ -226,12 +276,18 @@ async function handleApi(req, res) {
   if (match && req.method === "PUT") {
     const index = data.dividends.findIndex(item => item.id === match[1]);
     if (index === -1) return sendJson(res, 404, { error: "배당 내역을 찾지 못했어요." });
-    data.dividends[index] = cleanDividend(await readBody(req), match[1]);
+    const dividend = cleanDividend(await readBody(req), match[1]);
+    if (USE_SUPABASE) return sendJson(res, 200, await updateSupabaseDividend(match[1], dividend));
+    data.dividends[index] = dividend;
     await writeData(data);
     return sendJson(res, 200, data.dividends[index]);
   }
 
   if (match && req.method === "DELETE") {
+    if (USE_SUPABASE) {
+      await deleteSupabaseDividend(match[1]);
+      return sendJson(res, 200, { ok: true });
+    }
     const before = data.dividends.length;
     data.dividends = data.dividends.filter(item => item.id !== match[1]);
     if (data.dividends.length === before) return sendJson(res, 404, { error: "배당 내역을 찾지 못했어요." });
@@ -243,7 +299,9 @@ async function handleApi(req, res) {
   if (accountMatch && req.method === "PUT") {
     const index = data.accounts.findIndex(item => item.id === accountMatch[1]);
     if (index === -1) return sendJson(res, 404, { error: "계좌를 찾지 못했어요." });
-    data.accounts[index] = cleanAccount(await readBody(req), accountMatch[1]);
+    const account = cleanAccount(await readBody(req), accountMatch[1]);
+    if (USE_SUPABASE) return sendJson(res, 200, await updateSupabaseAccount(accountMatch[1], account));
+    data.accounts[index] = account;
     await writeData(data);
     return sendJson(res, 200, data.accounts[index]);
   }
@@ -252,6 +310,10 @@ async function handleApi(req, res) {
     const id = accountMatch[1];
     if (data.dividends.some(item => item.account === id)) {
       return sendJson(res, 409, { error: "배당 내역이 있는 계좌는 삭제할 수 없어요." });
+    }
+    if (USE_SUPABASE) {
+      await deleteSupabaseAccount(id);
+      return sendJson(res, 200, { ok: true });
     }
     const before = data.accounts.length;
     data.accounts = data.accounts.filter(item => item.id !== id);
