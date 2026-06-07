@@ -183,6 +183,7 @@ async function writeSupabaseData(data) {
 }
 
 function sendJson(res, status, data, headers = {}) {
+  if (res.headersSent || res.writableEnded) return;
   res.writeHead(status, { "content-type": "application/json; charset=utf-8", ...headers });
   res.end(JSON.stringify(data));
 }
@@ -337,6 +338,7 @@ async function serveStatic(req, res) {
   }
   try {
     const ext = path.extname(filePath);
+    const contents = await fs.readFile(filePath);
     const type = {
       ".html": "text/html; charset=utf-8",
       ".css": "text/css; charset=utf-8",
@@ -344,9 +346,10 @@ async function serveStatic(req, res) {
       ".json": "application/json; charset=utf-8",
     }[ext] || "application/octet-stream";
     res.writeHead(200, { "content-type": type });
-    res.end(await fs.readFile(filePath));
+    res.end(contents);
   } catch {
-    res.writeHead(404);
+    if (res.headersSent || res.writableEnded) return;
+    res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
     res.end("Not found");
   }
 }
@@ -356,6 +359,7 @@ const server = http.createServer(async (req, res) => {
     if (req.url.startsWith("/api/")) return await handleApi(req, res);
     await serveStatic(req, res);
   } catch (error) {
+    if (res.headersSent || res.writableEnded) return;
     sendJson(res, 400, { error: error.message || "요청 처리 중 문제가 생겼어요." });
   }
 });
