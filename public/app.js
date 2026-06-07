@@ -312,7 +312,12 @@ $("#account-form").addEventListener("submit", async event => {
 
 $("#delete-account").addEventListener("click", async () => {
   const id = $("#account-id").value;
-  if (!id || !confirm("이 계좌를 삭제할까요?")) return;
+  const account = state.accounts.find(item => item.id === id);
+  const dividendCount = state.dividends.filter(item => item.account === id).length;
+  const message = dividendCount
+    ? `${account?.label || "이 계좌"}와 배당내역 ${dividendCount}건을 모두 삭제할까요?`
+    : `${account?.label || "이 계좌"}를 삭제할까요?`;
+  if (!id || !confirm(message)) return;
   try {
     await api(`/api/accounts/${id}`, { method: "DELETE" });
     $("#account-id").value = "";

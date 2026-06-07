@@ -139,6 +139,11 @@ async function deleteSupabaseAccount(id) {
   await supabaseFetch(`accounts?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+async function deleteSupabaseAccountWithDividends(id) {
+  await supabaseFetch(`dividends?account=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
+  await deleteSupabaseAccount(id);
+}
+
 async function createSupabaseDividend(dividend) {
   const [created] = await supabaseFetch("dividends", { method: "POST", body: JSON.stringify(dividend) });
   return created;
@@ -308,16 +313,14 @@ async function handleApi(req, res) {
 
   if (accountMatch && req.method === "DELETE") {
     const id = accountMatch[1];
-    if (data.dividends.some(item => item.account === id)) {
-      return sendJson(res, 409, { error: "배당 내역이 있는 계좌는 삭제할 수 없어요." });
-    }
     if (USE_SUPABASE) {
-      await deleteSupabaseAccount(id);
+      await deleteSupabaseAccountWithDividends(id);
       return sendJson(res, 200, { ok: true });
     }
     const before = data.accounts.length;
     data.accounts = data.accounts.filter(item => item.id !== id);
     if (data.accounts.length === before) return sendJson(res, 404, { error: "계좌를 찾지 못했어요." });
+    data.dividends = data.dividends.filter(item => item.account !== id);
     await writeData(data);
     return sendJson(res, 200, { ok: true });
   }
